@@ -1,15 +1,14 @@
 mod allocator;
-mod block;
 mod free;
+mod heap;
 mod os;
-mod spinlock;
+mod sync;
 
-use allocator::ArenaListAllocator;
+use allocator::ArenaAllocator;
 use lazy_static::lazy_static;
 
 lazy_static! {
     pub static ref PAGE_SIZE: usize = os::page_size();
 }
 
-/// Expose allocator instance like you already do.
-pub static PAGE_ALLOCATOR: ArenaListAllocator = ArenaListAllocator;
+pub static PAGE_ALLOCATOR: ArenaAllocator = ArenaAllocator;

@@ -2,63 +2,51 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::cmp::max;
 use core::ptr;
 
-use crate::PAGE_SIZE;
-use crate::block::{
+use crate::free::FreeTree;
+use crate::heap::arena::{self, default_arena_size};
+use crate::heap::block::{
     ALIGN, BUSY, BlockHeader, FIRST, HEADER_SIZE, LAST, align_up, header_from_payload,
     min_free_block_size, next_block, payload_ptr, prev_block,
 };
-use crate::free::freelist::FreeList;
 use crate::os;
-use crate::spinlock::SpinLock;
-
-const DEFAULT_ARENA_PAGES: usize = 8;
-
-fn default_arena_size() -> usize {
-    DEFAULT_ARENA_PAGES * *PAGE_SIZE
-}
+use crate::sync::SpinLock;
 
 #[derive(Default)]
 struct AllocState {
-    free: FreeList,
+    free: FreeTree,
 }
 
-static STATE: SpinLock<AllocState> = SpinLock::new(AllocState {
-    free: FreeList {
-        head: ptr::null_mut(),
-    },
-});
+impl AllocState {
+    pub const fn new() -> Self {
+        Self {
+            free: FreeTree::new(),
+        }
+    }
+}
 
-pub struct ArenaListAllocator;
+static STATE: SpinLock<AllocState> = SpinLock::new(AllocState::new());
 
-impl ArenaListAllocator {
+pub struct ArenaAllocator;
+
+impl ArenaAllocator {
     unsafe fn add_default_arena(state: &mut AllocState) -> bool {
         unsafe {
-            let len = default_arena_size();
-            let base = os::map(len);
-            if base.is_null() {
+            let b = arena::create_default_arena();
+            if b.is_null() {
                 return false;
             }
 
-            let b = base as *mut BlockHeader;
-            (*b).prev_size = 0;
-            (*b).set_size_and_flags(len, FIRST | LAST);
-
-            state.free.push_front(b);
+            state.free.insert(b);
             true
         }
     }
 
     unsafe fn alloc_large(needed_block: usize) -> *mut u8 {
         unsafe {
-            let len = align_up(needed_block, *PAGE_SIZE);
-            let base = os::map(len);
-            if base.is_null() {
+            let b = arena::create_large_arena(needed_block);
+            if b.is_null() {
                 return ptr::null_mut();
             }
-
-            let b = base as *mut BlockHeader;
-            (*b).prev_size = 0;
-            (*b).set_size_and_flags(len, BUSY | FIRST | LAST);
             payload_ptr(b)
         }
     }
@@ -95,7 +83,7 @@ impl ArenaListAllocator {
                 }
                 (*b).set_size_and_flags(needed, a_flags);
 
-                state.free.push_front(r);
+                state.free.insert(r);
             } else {
                 // do not split; give an enire block
                 let mut a_flags = BUSY;
@@ -158,17 +146,17 @@ impl ArenaListAllocator {
                 }
             }
 
-            state.free.push_front(b);
+            state.free.insert(b);
         }
     }
 
-    pub fn debug_dump_state(&self, tag: &str) {
-        let state = STATE.lock();
-        unsafe { state.free.dump(tag) };
-    }
+    // pub fn debug_dump_state(&self, tag: &str) {
+    //     let state = STATE.lock();
+    //     unsafe { state.free.dump(tag) };
+    // }
 }
 
-unsafe impl GlobalAlloc for ArenaListAllocator {
+unsafe impl GlobalAlloc for ArenaAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         unsafe {
             if layout.size() == 0 {

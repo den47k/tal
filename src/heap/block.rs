@@ -13,8 +13,15 @@ pub struct BlockHeader {
 
 #[repr(C)]
 pub struct FreeNode {
-    pub prev_free: *mut BlockHeader,
-    pub next_free: *mut BlockHeader,
+    // AVL pointers
+    pub left: *mut BlockHeader,
+    pub right: *mut BlockHeader,
+    pub parent: *mut BlockHeader,
+    pub height: i32,
+
+    // Same-size doubly linked list pointers
+    pub same_prev: *mut BlockHeader,
+    pub same_next: *mut BlockHeader,
 }
 
 pub const HEADER_SIZE: usize = size_of::<BlockHeader>();
@@ -62,7 +69,7 @@ impl BlockHeader {
 }
 
 #[inline]
-pub unsafe fn free_node_ptr(b: *mut BlockHeader) -> *mut FreeNode {
+pub unsafe fn links_ptr(b: *mut BlockHeader) -> *mut FreeNode {
     unsafe { (b as *mut u8).add(HEADER_SIZE) as *mut FreeNode }
 }
 
