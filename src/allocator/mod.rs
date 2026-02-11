@@ -1,5 +1,5 @@
 use core::alloc::{GlobalAlloc, Layout};
-use core::cmp::max;
+use core::cmp::{max, min};
 use core::ptr;
 
 use crate::free::FreeTree;
@@ -221,6 +221,145 @@ unsafe impl GlobalAlloc for ArenaAllocator {
 
             let mut state = STATE.lock();
             Self::coalesce_and_insert(&mut state, b);
+        }
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        unsafe {
+            if ptr.is_null() {
+                let Ok(new_layout) = Layout::from_size_align(new_size, layout.align()) else {
+                    return core::ptr::null_mut();
+                };
+                return self.alloc(new_layout);
+            }
+
+            if new_size == 0 {
+                self.dealloc(ptr, layout);
+                return core::ptr::null_mut();
+            }
+
+            let b = header_from_payload(ptr);
+            let old_total = (*b).size();
+            let old_payload = old_total.saturating_sub(HEADER_SIZE);
+
+            let req_align = layout.align();
+            let needed_total = align_up(HEADER_SIZE + new_size, max(req_align, ALIGN));
+
+            // Large arena reallocation
+            if old_total > default_arena_size() {
+                if needed_total <= old_total {
+                    return ptr;
+                }
+
+                let new_ptr = Self::alloc_large(needed_total);
+                if new_ptr.is_null() {
+                    return core::ptr::null_mut();
+                }
+
+                core::ptr::copy_nonoverlapping(ptr, new_ptr, min(old_payload, new_size));
+                arena::destroy_arena(b as *mut u8, old_total);
+            }
+
+            // Default arena reallocation
+            // Case A: current block already large enough -> optionally shrink by splitting tail.
+            if needed_total < old_total {
+                let remainder = old_total - needed_total;
+
+                if remainder >= min_free_block_size() {
+                    let mut state = STATE.lock();
+
+                    let orig_flags = (*b).flags();
+                    let orig_first = (orig_flags & FIRST) != 0;
+                    let orig_last = (orig_flags & LAST) != 0;
+
+                    let mut a_flags = BUSY;
+                    if orig_first {
+                        a_flags |= FIRST;
+                    }
+                    (*b).set_size_and_flags(needed_total, a_flags);
+
+                    let r = (b as *mut u8).add(needed_total) as *mut BlockHeader;
+                    (*r).prev_size = needed_total;
+                    (*r).set_size_and_flags(remainder, if orig_last { LAST } else { 0 });
+
+                    if !(*r).is_last() {
+                        (*next_block(r)).prev_size = remainder;
+                    }
+
+                    Self::coalesce_and_insert(&mut state, r);
+                }
+                return ptr;
+            }
+
+            // Case B: need to grow. Try to merge with next free block
+            {
+                let mut state = STATE.lock();
+
+                if !(*b).is_last() {
+                    let n = next_block(b);
+
+                    if !(*n).is_busy() {
+                        let combined = old_total + (*n).size();
+
+                        if combined >= needed_total {
+                            state.free.remove(n);
+
+                            let orig_first = ((*b).flags() & FIRST) != 0;
+                            let merged_last = ((*n).flags() & LAST) != 0;
+
+                            let extra = combined - needed_total;
+
+                            if extra >= min_free_block_size() {
+                                let mut a_flags = BUSY;
+                                if orig_first {
+                                    a_flags |= FIRST;
+                                }
+                                (*b).set_size_and_flags(needed_total, a_flags);
+
+                                let r = (b as *mut u8).add(needed_total) as *mut BlockHeader;
+                                (*r).prev_size = needed_total;
+                                (*r).set_size_and_flags(extra, if merged_last { LAST } else { 0 });
+
+                                if !(*r).is_last() {
+                                    (*next_block(r)).prev_size = extra;
+                                }
+
+                                Self::coalesce_and_insert(&mut state, r);
+                            } else {
+                                let mut a_flags = BUSY;
+                                if orig_first {
+                                    a_flags |= FIRST;
+                                }
+                                if merged_last {
+                                    a_flags |= LAST;
+                                }
+
+                                (*b).set_size_and_flags(combined, a_flags);
+
+                                if !merged_last {
+                                    (*next_block(b)).prev_size = combined;
+                                }
+                            }
+
+                            return ptr;
+                        }
+                    }
+                }
+            }
+
+            // Case C: cannot grow in place -> allocate new, copy, free old.
+            let Ok(new_layout) = Layout::from_size_align(new_size, req_align) else {
+                return core::ptr::null_mut();
+            };
+
+            let new_ptr = self.alloc(new_layout);
+            if new_ptr.is_null() {
+                return core::ptr::null_mut();
+            }
+
+            core::ptr::copy_nonoverlapping(ptr, new_ptr, min(old_payload, new_size));
+            self.dealloc(ptr, layout);
+            new_ptr
         }
     }
 }
