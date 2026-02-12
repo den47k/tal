@@ -25,6 +25,7 @@ pub struct FreeNode {
 }
 
 pub const HEADER_SIZE: usize = size_of::<BlockHeader>();
+pub const FREE_META_SIZE: usize = HEADER_SIZE + size_of::<FreeNode>();
 
 #[inline]
 pub const fn align_up(x: usize, a: usize) -> usize {

@@ -5,52 +5,34 @@ fn main() {
     println!("page size: {}", page);
 
     unsafe {
-        // let a_layout = Layout::from_size_align(1000, 8).unwrap();
-        // let b_layout = Layout::from_size_align(2000, 8).unwrap();
-        // let c_layout = Layout::from_size_align(8000, 8).unwrap();
-        // let d_layout = Layout::from_size_align(22000, 8).unwrap();
+        let mut a_layout = Layout::from_size_align(1000, 8).unwrap();
+        let mut b_layout = Layout::from_size_align(2000, 8).unwrap();
 
-        // let a = test2_alloc::PAGE_ALLOCATOR.alloc(a_layout);
-        // let b = test2_alloc::PAGE_ALLOCATOR.alloc(b_layout);
-        // let b1 = test2_alloc::PAGE_ALLOCATOR.alloc(b_layout);
-        // let b2 = test2_alloc::PAGE_ALLOCATOR.alloc(b_layout);
-        // let b3 = test2_alloc::PAGE_ALLOCATOR.alloc(b_layout);
-        // let c = test2_alloc::PAGE_ALLOCATOR.alloc(c_layout);
-
-        // assert!(!a.is_null() && !b.is_null() && !c.is_null());
-
-        // *a = 0xAA;
-        // *a.add(999) = 0xAB;
-
-        // *b = 0xBA;
-        // *b.add(1999) = 0xBB;
-
-        // *c = 0xCA;
-        // *c.add(2999) = 0xCB;
-
-        // test2_alloc::PAGE_ALLOCATOR.dealloc(b, b_layout);
-        // let d = test2_alloc::PAGE_ALLOCATOR.alloc(d_layout);
-        // test2_alloc::PAGE_ALLOCATOR.dealloc(a, a_layout);
-        // test2_alloc::PAGE_ALLOCATOR.dealloc(c, c_layout);
-        // test2_alloc::PAGE_ALLOCATOR.dealloc(d, c_layout);
-        // test2_alloc::PAGE_ALLOCATOR.dealloc(b2, b_layout);
-        // test2_alloc::PAGE_ALLOCATOR.dealloc(b3, b_layout);
-        // test2_alloc::PAGE_ALLOCATOR.dealloc(b1, b_layout);
-
-        // println!("freed a,b,c (should have coalesced back in arena)");
-
-        let a_layout = Layout::from_size_align(1000, 8).unwrap();
-        let b_layout = Layout::from_size_align(2000, 8).unwrap();
-
-        let a = tal::PAGE_ALLOCATOR.alloc(a_layout);
-        let b = tal::PAGE_ALLOCATOR.alloc(b_layout);
-
-        tal::PAGE_ALLOCATOR.realloc(b, b_layout, 4000);
-        tal::PAGE_ALLOCATOR.realloc(a, b_layout, 40000);
-
+        let mut a = tal::PAGE_ALLOCATOR.alloc(a_layout);
+        let mut b = tal::PAGE_ALLOCATOR.alloc(b_layout);
         assert!(!a.is_null() && !b.is_null());
+
+        // realloc b to 4000
+        let new_b = tal::PAGE_ALLOCATOR.realloc(b, b_layout, 4000);
+        if new_b.is_null() {
+            // realloc failed, b is still valid
+            panic!("realloc(b) failed");
+        }
+        b = new_b;
+        b_layout = Layout::from_size_align(4000, 8).unwrap();
+
+        // realloc a to 40000
+        let new_a = tal::PAGE_ALLOCATOR.realloc(a, a_layout, 40000);
+        if new_a.is_null() {
+            panic!("realloc(a) failed");
+        }
+        a = new_a;
+        a_layout = Layout::from_size_align(40000, 8).unwrap();
 
         tal::PAGE_ALLOCATOR.dealloc(a, a_layout);
         tal::PAGE_ALLOCATOR.dealloc(b, b_layout);
+
+        let a2 = tal::PAGE_ALLOCATOR.alloc(Layout::from_size_align(1000, 8).unwrap());
+        tal::PAGE_ALLOCATOR.dealloc(a2, Layout::from_size_align(1000, 8).unwrap());
     }
 }

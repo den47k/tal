@@ -33,3 +33,13 @@ pub fn unmap(addr: *mut u8, len: usize) {
         libc::munmap(addr as *mut libc::c_void, len);
     }
 }
+
+pub unsafe fn madvise(addr: *mut u8, len: usize) {
+    unsafe {
+        if addr.is_null() || len == 0 {
+            return;
+        }
+
+        let _ = libc::madvise(addr as *mut libc::c_void, len, libc::MADV_DONTNEED);
+    }
+}

@@ -8,7 +8,6 @@ use crate::heap::block::{
     ALIGN, BUSY, BlockHeader, FIRST, HEADER_SIZE, LAST, align_up, header_from_payload,
     min_free_block_size, next_block, payload_ptr, prev_block,
 };
-use crate::os;
 use crate::sync::SpinLock;
 
 #[derive(Default)]
@@ -83,6 +82,7 @@ impl ArenaAllocator {
                 }
                 (*b).set_size_and_flags(needed, a_flags);
 
+                arena::advise_free_pages(r);
                 state.free.insert(r);
             } else {
                 // do not split; give an enire block
@@ -119,8 +119,7 @@ impl ArenaAllocator {
 
                     // Fix after-next prev_size if not last
                     if !(*b).is_last() {
-                        let after = next_block(b);
-                        (*after).prev_size = new_size;
+                        (*next_block(b)).prev_size = new_size;
                     }
                 }
             }
@@ -138,14 +137,20 @@ impl ArenaAllocator {
 
                     // Fix next prev_size if not last
                     if !(*p).is_last() {
-                        let after = next_block(p);
-                        (*after).prev_size = new_size;
+                        (*next_block(b)).prev_size = new_size;
                     }
 
                     b = p;
                 }
             }
 
+            if !(*b).is_busy() && (*b).is_first() && (*b).is_last() {
+                let len = (*b).size();
+                arena::destroy_arena(b as *mut u8, len);
+                return;
+            }
+
+            arena::advise_free_pages(b);
             state.free.insert(b);
         }
     }
@@ -183,6 +188,7 @@ unsafe impl GlobalAlloc for ArenaAllocator {
 
             // Ensure we have at least one arena
             if state.free.is_empty() {
+                println!("I was here");
                 if !Self::add_default_arena(&mut state) {
                     return ptr::null_mut();
                 }
@@ -215,7 +221,7 @@ unsafe impl GlobalAlloc for ArenaAllocator {
 
             // If it's bigger than the default arena size, it must have been a "large arena" mapping.
             if sz > default_arena_size() {
-                os::unmap(b as *mut u8, sz);
+                arena::destroy_arena(b as *mut u8, sz);
                 return;
             }
 
