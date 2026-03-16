@@ -133,7 +133,7 @@ unsafe fn init_free_links(b: *mut BlockHeader) {
     }
 }
 
-// Head of the "same-size" list is an avl node and b is inserted after the head.
+// head of the "same-size" list is an avl node and b is inserted after the head.
 // H -> A <-> B <-> C
 unsafe fn list_push_front(head: *mut BlockHeader, b: *mut BlockHeader) {
     unsafe {
@@ -173,14 +173,14 @@ unsafe fn list_remove(b: *mut BlockHeader) {
     }
 }
 
-// Promote `new_head` to replace `old_head` in the AVL tree (same size).
+// promote `new_head` to replace `old_head` in the AVL tree (same size).
 unsafe fn promote_replace_node(
     tree: &mut FreeTree,
     old_head: *mut BlockHeader,
     new_head: *mut BlockHeader,
 ) {
     unsafe {
-        // Copy AVL fields from old to new
+        // copy AVL fields from old to new
         let old = links_ptr(old_head);
         let new = links_ptr(new_head);
 
@@ -189,14 +189,14 @@ unsafe fn promote_replace_node(
         (*new).parent = (*old).parent;
         (*new).height = (*old).height;
 
-        // Adopt same-size list of old head:
+        // adopt same-size list of old head:
         (*new).same_prev = ptr::null_mut();
         (*new).same_next = (*old).same_next;
         if !(*old).same_next.is_null() {
             (*links_ptr((*old).same_next)).same_prev = new_head;
         }
 
-        // Fix children parent pointers to new head
+        // fix children parent pointers to new head
         if !(*new).left.is_null() {
             (*links_ptr((*new).left)).parent = new_head;
         }
@@ -204,7 +204,7 @@ unsafe fn promote_replace_node(
             (*links_ptr((*new).right)).parent = new_head;
         }
 
-        // Fix parent link to point to new head
+        // fix parent link to point to new head
         if (*new).parent.is_null() {
             tree.root = new_head;
         } else {
@@ -216,7 +216,7 @@ unsafe fn promote_replace_node(
             }
         }
 
-        // Detach old head (no longer in tree/list)
+        // detach old head (no longer in tree/list)
         (*old).left = ptr::null_mut();
         (*old).right = ptr::null_mut();
         (*old).parent = ptr::null_mut();
@@ -226,8 +226,7 @@ unsafe fn promote_replace_node(
     }
 }
 
-// --------------------
-
+// helpers
 unsafe fn h(b: *mut BlockHeader) -> i32 {
     unsafe {
         if b.is_null() {
@@ -342,7 +341,6 @@ unsafe fn rebalance_upwards(tree: &mut FreeTree, mut cur: *mut BlockHeader) {
 
 unsafe fn avl_delete_node(tree: &mut FreeTree, z: *mut BlockHeader) {
     unsafe {
-        // let mut rebalance_from: *mut BlockHeader;
         let rebalance_from: *mut BlockHeader;
 
         if (*links_ptr(z)).left.is_null() || (*links_ptr(z)).right.is_null() {
@@ -415,7 +413,7 @@ unsafe fn avl_delete_node(tree: &mut FreeTree, z: *mut BlockHeader) {
             // detach z completely
             init_free_links(z);
 
-            rebalance_from = sp;
+            rebalance_from = if sp == z { s } else { sp };
         }
 
         rebalance_upwards(tree, rebalance_from);

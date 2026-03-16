@@ -7,9 +7,15 @@ use crate::{
 };
 
 const DEFAULT_ARENA_PAGES: usize = 8;
+const FALLBACK_ARENA_SIZE: usize = 32 * 1024;
 
 pub fn default_arena_size() -> usize {
-    DEFAULT_ARENA_PAGES * *PAGE_SIZE
+    let page = *PAGE_SIZE;
+    if page == 0 {
+        FALLBACK_ARENA_SIZE
+    } else {
+        DEFAULT_ARENA_PAGES * page
+    }
 }
 
 #[inline]
@@ -42,7 +48,12 @@ pub fn create_default_arena() -> *mut BlockHeader {
 
 pub fn create_large_arena(needed_block_bytes: usize) -> *mut BlockHeader {
     unsafe {
-        let len = align_up(needed_block_bytes, *PAGE_SIZE);
+        let page = *PAGE_SIZE;
+        let len = if page == 0 {
+            needed_block_bytes
+        } else {
+            align_up(needed_block_bytes, page)
+        };
         let base = os::map(len);
         if base.is_null() {
             return ptr::null_mut();
@@ -69,10 +80,8 @@ pub unsafe fn advise_free_pages(b: *mut BlockHeader) {
         let start = b as usize;
         let end = start + (*b).size();
 
-        // Do NOT discard header+AVL metadata (it must remain intact)
         let meta_end = start + crate::heap::block::FREE_META_SIZE;
 
-        // Advise only full pages completely inside the free block and after metadata.
         let advise_start = page_align_up(meta_end, page);
         let advise_end = page_align_down(end, page);
 
