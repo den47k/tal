@@ -153,10 +153,10 @@ impl ArenaAllocator {
         }
     }
 
-    // pub fn debug_dump_state(&self, tag: &str) {
-    //     let state = STATE.lock();
-    //     unsafe { state.free.dump(tag) };
-    // }
+    pub fn mem_show(&self) {
+        let state = STATE.lock();
+        unsafe { state.free.dump() };
+    }
 }
 
 unsafe impl GlobalAlloc for ArenaAllocator {

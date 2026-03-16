@@ -24,6 +24,11 @@ pub extern "C" fn tal_free(ptr: *mut c_void) {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn tal_mem_show() {
+    PAGE_ALLOCATOR.mem_show();
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn tal_realloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
     if ptr.is_null() {
         return tal_alloc(new_size);

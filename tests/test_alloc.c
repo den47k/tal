@@ -4,6 +4,7 @@
 extern void *tal_alloc(unsigned long size);
 extern void  tal_free(void *ptr);
 extern void *tal_realloc(void *ptr, unsigned long new_size);
+extern void  tal_mem_show(void);
 
 int main(void) {
     printf("=== Allocator Test ===\n\n");
@@ -22,7 +23,14 @@ int main(void) {
         ptrs[i] = tal_alloc(64 * (i + 1));
         printf("  alloc(%4d) = %p\n", 64 * (i + 1), ptrs[i]);
     }
-    for (int i = 0; i < 10; i++) {
+    printf("  state with 10 active allocations:\n");
+    tal_mem_show();
+    for (int i = 0; i < 5; i++) {
+        tal_free(ptrs[i]);
+    }
+    printf("  freed first 5:\n");
+    tal_mem_show();
+    for (int i = 5; i < 10; i++) {
         tal_free(ptrs[i]);
     }
     printf("  all freed OK\n\n");
@@ -66,6 +74,7 @@ int main(void) {
     tal_free(p6);
     printf("  free OK\n\n");
 
+    tal_mem_show();
     printf("=== All tests passed ===\n");
     return 0;
 }

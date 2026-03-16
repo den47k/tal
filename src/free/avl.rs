@@ -103,6 +103,17 @@ impl FreeTree {
         }
     }
 
+    pub unsafe fn dump(&self) {
+        eprintln!("===== mem_show =====");
+        eprintln!("Free tree (AVL):");
+        if self.root.is_null() {
+            eprintln!("  (empty)");
+        } else {
+            unsafe { dump_node(self.root, 1, ' ') };
+        }
+        eprintln!("====================");
+    }
+
     unsafe fn find_head_by_size(&self, size: usize) -> *mut BlockHeader {
         unsafe {
             let mut cur = self.root;
@@ -417,5 +428,44 @@ unsafe fn avl_delete_node(tree: &mut FreeTree, z: *mut BlockHeader) {
         }
 
         rebalance_upwards(tree, rebalance_from);
+    }
+}
+
+unsafe fn count_dupes(head: *mut BlockHeader) -> usize {
+    unsafe {
+        let mut count = 0;
+        let mut cur = (*links_ptr(head)).same_next;
+        while !cur.is_null() {
+            count += 1;
+            cur = (*links_ptr(cur)).same_next;
+        }
+        count
+    }
+}
+
+unsafe fn dump_node(node: *mut BlockHeader, depth: usize, dir: char) {
+    unsafe {
+        if node.is_null() {
+            return;
+        }
+
+        let l = links_ptr(node);
+        dump_node((*l).left, depth + 1, 'L');
+
+        let indent = "  ".repeat(depth);
+        let prefix = if dir == ' ' { "".to_string() } else { format!("{}: ", dir) };
+        let dupes = count_dupes(node);
+        eprintln!(
+            "{}{}{:p} size={} height={} bf={} dupes={}",
+            indent,
+            prefix,
+            node,
+            (*node).size(),
+            (*l).height,
+            h((*l).left) - h((*l).right),
+            dupes,
+        );
+
+        dump_node((*l).right, depth + 1, 'R');
     }
 }
