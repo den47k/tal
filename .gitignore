@@ -1,3 +1,5 @@
 /target
 tests/test_alloc
 tests/test_alloc_dbg
+tests/test_random
+tests/test_random_dbg
